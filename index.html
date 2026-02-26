@@ -677,7 +677,7 @@
         }
         #concy-chat-window .cw-input {
             flex: 1;
-            padding: 12px 48px 12px 18px;
+            padding: 12px 82px 12px 18px;
             background: #fff;
             border: none;
             border-radius: 28px;
@@ -689,6 +689,32 @@
             width: 100%;
         }
         #concy-chat-window .cw-input::placeholder { color: #aaa; font-size: 0.82rem; }
+        #concy-chat-window .cw-voice {
+            position: absolute;
+            right: 42px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 32px;
+            height: 32px;
+            background: transparent;
+            color: #999;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.2s, background 0.2s;
+        }
+        #concy-chat-window .cw-voice:hover { color: #3C3C3C; }
+        #concy-chat-window .cw-voice.recording {
+            color: #e53e3e;
+            animation: voice-pulse 1.2s ease-in-out infinite;
+        }
+        @keyframes voice-pulse {
+            0%, 100% { transform: translateY(-50%) scale(1); }
+            50% { transform: translateY(-50%) scale(1.15); }
+        }
         #concy-chat-window .cw-send {
             position: absolute;
             right: 6px;
@@ -931,6 +957,12 @@
     <div class="cw-input-area">
         <div class="cw-input-inner">
             <input type="text" class="cw-input" id="cwInput" placeholder="Ask a question, I am here to help...">
+            <button class="cw-voice" id="cwVoice" aria-label="Voice input">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                    <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+                </svg>
+            </button>
             <button class="cw-send" id="cwSend" aria-label="Send">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="transform:rotate(-45deg) translate(1px,-1px);">
                     <path d="M3.478 2.405a.75.75 0 0 0-.926.94l2.432 7.905H13.5a.75.75 0 0 1 0 1.5H4.984l-2.432 7.905a.75.75 0 0 0 .926.94 60.519 60.519 0 0 0 18.445-8.986.75.75 0 0 0 0-1.218A60.517 60.517 0 0 0 3.478 2.405Z"/>
@@ -1071,11 +1103,15 @@ class ConcyFloatingWidget {
             messages: document.getElementById('cwMessages'),
             input: document.getElementById('cwInput'),
             sendBtn: document.getElementById('cwSend'),
+            voice: document.getElementById('cwVoice'),
             newChat: document.getElementById('cwNewChat'),
             greeting: document.getElementById('cwGreeting'),
         };
+        this.isRecording = false;
+        this.recognition = null;
         this.updateGreeting();
         this.bindEvents();
+        this.setupSpeechRecognition();
     }
     updateGreeting() {
         const h = new Date().getHours();
@@ -1089,6 +1125,7 @@ class ConcyFloatingWidget {
             this.elements.hook.classList.add('hidden');
         });
         this.elements.sendBtn.addEventListener('click', () => this.sendMessage());
+        this.elements.voice.addEventListener('click', () => this.toggleVoice());
         this.elements.input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); this.sendMessage(); }
         });
@@ -1109,6 +1146,40 @@ class ConcyFloatingWidget {
             this.elements.chatWindow.classList.remove('open');
             this.elements.bubble.classList.remove('open');
         }
+    }
+    setupSpeechRecognition() {
+        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SR) { this.elements.voice.style.display = 'none'; return; }
+        this.recognition = new SR();
+        this.recognition.lang = 'en-AU';
+        this.recognition.interimResults = true;
+        this.recognition.continuous = false;
+        this.recognition.onresult = (e) => {
+            const transcript = Array.from(e.results).map(r => r[0].transcript).join('');
+            this.elements.input.value = transcript;
+            if (e.results[0].isFinal) {
+                this.stopVoice();
+                this.sendMessage();
+            }
+        };
+        this.recognition.onend = () => this.stopVoice();
+        this.recognition.onerror = () => this.stopVoice();
+    }
+    toggleVoice() {
+        if (!this.recognition) return;
+        if (this.isRecording) {
+            this.recognition.stop();
+        } else {
+            this.recognition.start();
+            this.isRecording = true;
+            this.elements.voice.classList.add('recording');
+            this.elements.input.placeholder = 'Listening...';
+        }
+    }
+    stopVoice() {
+        this.isRecording = false;
+        this.elements.voice.classList.remove('recording');
+        this.elements.input.placeholder = 'Ask a question, I am here to help...';
     }
     resetChat() {
         this.api.resetSession(this.sessionId);
